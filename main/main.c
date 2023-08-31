@@ -65,37 +65,54 @@ static const char *SECOND_TAG = "SERVER";
 int conunt_failed_reconnection_times;
 bool attempt_reconnect = false; 
 
+static httpd_handle_t server = NULL;
 
-// static void IRAM_ATTR on_btn_pushed(void *args)
-// {
-//   xSemaphoreGiveFromISR(btn_sem, NULL);
-// }
 
-// static void btn_push_task(void *params)
-// {
-//   while (true)
-//   {
-//     xSemaphoreTake(btn_sem, portMAX_DELAY);
-//     cJSON *payload = cJSON_CreateObject();
-//     cJSON_AddBoolToObject(payload, "btn_state", gpio_get_level(BTN));
-//     char *message = cJSON_Print(payload);
-//     ESP_LOGW("btn","message: %s\n", message);
-//     //send_ws_message(message);
-//     cJSON_Delete(payload);
-//     free(message);
-//   }
-// }
-// void init_btn(void)
-// {
-//   xTaskCreate(btn_push_task, "btn_push_task", 2048, NULL, 5, NULL);
-//   btn_sem = xSemaphoreCreateBinary();
-//   // not required for version 5
-//   // gpio_pad_select_gpio(BTN);
-//   gpio_set_direction(BTN, GPIO_MODE_INPUT);
-//   gpio_set_intr_type(BTN, GPIO_INTR_ANYEDGE);
-//   gpio_install_isr_service(0);
-//   gpio_isr_handler_add(BTN, on_btn_pushed, NULL);
-// }
+/*static void IRAM_ATTR on_btn_pushed(void *args)
+{
+  xSemaphoreGiveFromISR(btn_sem, NULL);
+}
+
+static void btn_push_task(void *params)
+{
+  while (true)
+  {
+    xSemaphoreTake(btn_sem, portMAX_DELAY);
+    cJSON *payload = cJSON_CreateObject();
+    cJSON_AddBoolToObject(payload, "btn_state", gpio_get_level(BTN));
+    char *message = cJSON_Print(payload);
+    ESP_LOGW("btn","message: %s\n", message);
+    //send_ws_message(message);
+    cJSON_Delete(payload);
+    free(message);
+  }
+}
+void init_btn(void)
+{
+  xTaskCreate(btn_push_task, "btn_push_task", 2048, NULL, 5, NULL);
+  btn_sem = xSemaphoreCreateBinary();
+  // not required for version 5
+  // gpio_pad_select_gpio(BTN);
+  gpio_set_direction(BTN, GPIO_MODE_INPUT);
+  gpio_set_intr_type(BTN, GPIO_INTR_ANYEDGE);
+  gpio_install_isr_service(0);
+  gpio_isr_handler_add(BTN, on_btn_pushed, NULL);
+}
+*/
+
+void pack(){
+    // uint8_t buf[6];
+    // int bufLength = sizeof(buf);
+    // char esp_id[2 * bufLength + 1];
+    // // Convert uint8_t buffer to string
+    // for (int i = 0; i < bufLength; i++)
+    // {
+    //     sprintf(&esp_id[i * 2], "%02X", buf[i]); // Format as two-digit hexadecimal
+    // }
+
+    // char *timestamp = esp_log_system_timestamp();
+
+}
 
 void inint_led(void){ 
 
@@ -150,12 +167,65 @@ static esp_err_t on_toggle_led_url (httpd_req_t *r)
 
 }
 
+////////////////////////////// Move it up 
+static int client_session_id; 
+#define WS_MAX_SIZE 1024
+static esp_err_t on_ws_url(httpd_req_t *r)
+{
+    ESP_LOGI("ES","URL: %s",r->uri);
+    client_session_id = httpd_req_to_sockfd(r);
+    if(r->method == HTTP_GET){
+        return ESP_OK;
+    }
+    
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt,0,sizeof(httpd_ws_frame_t()));
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+    ws_pkt.payload = malloc(WS_MAX_SIZE);
+    httpd_ws_recv_frame(r,&ws_pkt,WS_MAX_SIZE); // if last parmeter 0 , then we will got the length, but it give error
+
+    ESP_LOGI("WebSocket","WS payload%*s\n", ws_pkt.len,ws_pkt.payload);
+
+    free(ws_pkt.payload);
+
+    char *response = "connected ok";
+    httpd_ws_frame_t ws_respon3 = {
+        .final=true,
+        .fragmented = false,
+        .type = HTTPD_WS_TYPE_TEXT,
+        .payload = (uint8_t *)response,
+        .len = strlen(response)
+    };
+
+    return httpd_ws_send_frame(r,&ws_respon3);
+
+}
+
+esp_err_t send_ws_ms(char* msg){
+
+    if(!client_session_id){
+        ESP_LOGE("on_ws_url", "Ther is no client id");
+        return -1;
+    }
+
+    httpd_ws_frame_t ws_msg = {
+
+        .final = true,
+        .fragmented =false,
+        .len = strlen(msg),
+        .payload= (uint8_t *) msg,
+        .type = HTTPD_WS_TYPE_TEXT
+    };
+
+    return httpd_ws_send_frame_async(server,client_session_id,&ws_msg);
+
+
+}
 // Start the server
 // handle uri
 static void init_server()
 {
 
-    httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     ESP_ERROR_CHECK(httpd_start(&server, &config));
@@ -174,11 +244,22 @@ static void init_server()
         .user_ctx = NULL
   };
 
+  httpd_uri_t ws_url = {
+        .uri = "/ws",
+        .method = HTTP_GET,
+        .handler = on_ws_url,
+        .is_websocket = true,
+        .user_ctx = NULL
+  };
+
     // for http server
     httpd_register_uri_handler(server,&default_url);
 
     //for led
     httpd_register_uri_handler(server,&toggle_led_url);
+
+    // for websocket
+   httpd_register_uri_handler(server,&ws_url);
 
 }
 static void send_task (void *params) 
@@ -194,6 +275,7 @@ free(msg);
 
 
 }
+
 
 // To disconnecte the wifi. If needed
 
