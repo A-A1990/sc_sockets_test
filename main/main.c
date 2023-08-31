@@ -27,6 +27,8 @@
 
 #include <esp_http_server.h>
 
+#include "esp_timer.h"
+
 
 ////////////////////////////
 #include "mdns.h" 
@@ -46,6 +48,8 @@
 
 #define LED 37
 #define BTN 11
+#define secondstomicro 1000000
+
 static SemaphoreHandle_t btn_sem;
 
 
@@ -237,14 +241,14 @@ static void init_server()
         .user_ctx = NULL
   };
   
-  httpd_uri_t toggle_led_url = {
-        .uri = "/led",
-        .method = HTTP_POST,
-        .handler = on_toggle_led_url,
-        .user_ctx = NULL
-  };
+    httpd_uri_t toggle_led_url = {
+            .uri = "/led",
+            .method = HTTP_POST,
+            .handler = on_toggle_led_url,
+            .user_ctx = NULL
+    };
 
-  httpd_uri_t ws_url = {
+    httpd_uri_t ws_url = {
         .uri = "/ws",
         .method = HTTP_GET,
         .handler = on_ws_url,
@@ -408,15 +412,47 @@ void start_mdns_service()
     mdns_hostname_set("si.com");
     mdns_instance_name_set("SC_SI");
 }
+
+void timer_callback2(){
+    char *timestamp = esp_log_system_timestamp();
+    // Create cJSON object/struct to store data
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "Timestamp", timestamp);
+    char *msg = cJSON_Print(root);
+    send_ws_ms(msg);
+
+    cJSON_Delete(root);
+    free(msg);
+    
+
+}
+esp_timer_handle_t timer_handler;
+void start_timer(){
+ESP_ERROR_CHECK(esp_timer_start_periodic(timer_handler, secondstomicro * 3 ));
+}
+
+void init_timer(){
+
+    const esp_timer_create_args_t my_timer_args = {.callback = &timer_callback2, .name = "Timer"};
+    
+    ESP_ERROR_CHECK(esp_timer_create(&my_timer_args, &timer_handler));
+
+    start_timer();
+    
+}
+
+
 void app_main(void){
 
     nvs_flash_init();
     inint_led();
     //init_btn();
+    start_mdns_service();
     wifi_connect_init();
     wifi_connect_ap("SSID","12345678");
+    init_timer();
+    
     init_server();
-    start_mdns_service();
     
     // esp_netif_init();
     // esp_event_loop_create_default();
