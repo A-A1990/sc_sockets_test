@@ -4,11 +4,10 @@
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 #include "freertos/event_groups.h"
-// #include ""
-// #include ""
-// #include ""
+
 
 #include <esp_wifi.h>
 #include <esp_event.h>
@@ -20,20 +19,36 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_eth.h"
-
 #include "cJSON.h"
+
+#include "driver/gpio.h"
 
 #include "protocol_examples_common.h"
 
 #include <esp_http_server.h>
 
+
 ////////////////////////////
 #include "mdns.h" 
 
+//#include "toggleled.h"
+
 /*******************    Wifi ap config *******************/
+
+/***********************************    Importent **************************/
+/*******************    Before use We need to uncomment the usege of this in wifi_connect_ap()*******************/
 #define MAX_CONNECTION 4
 #define WIFI_CHANNEL  6
 #define WIFI_BEACON_INTERVAL 100;
+
+/*******************    Wifi ap config *******************/
+
+
+#define LED 37
+#define BTN 11
+static SemaphoreHandle_t btn_sem;
+
+
 
 static esp_netif_t *esp_netif;
 
@@ -50,12 +65,88 @@ static const char *SECOND_TAG = "SERVER";
 int conunt_failed_reconnection_times;
 bool attempt_reconnect = false; 
 
+
+// static void IRAM_ATTR on_btn_pushed(void *args)
+// {
+//   xSemaphoreGiveFromISR(btn_sem, NULL);
+// }
+
+// static void btn_push_task(void *params)
+// {
+//   while (true)
+//   {
+//     xSemaphoreTake(btn_sem, portMAX_DELAY);
+//     cJSON *payload = cJSON_CreateObject();
+//     cJSON_AddBoolToObject(payload, "btn_state", gpio_get_level(BTN));
+//     char *message = cJSON_Print(payload);
+//     ESP_LOGW("btn","message: %s\n", message);
+//     //send_ws_message(message);
+//     cJSON_Delete(payload);
+//     free(message);
+//   }
+// }
+// void init_btn(void)
+// {
+//   xTaskCreate(btn_push_task, "btn_push_task", 2048, NULL, 5, NULL);
+//   btn_sem = xSemaphoreCreateBinary();
+//   // not required for version 5
+//   // gpio_pad_select_gpio(BTN);
+//   gpio_set_direction(BTN, GPIO_MODE_INPUT);
+//   gpio_set_intr_type(BTN, GPIO_INTR_ANYEDGE);
+//   gpio_install_isr_service(0);
+//   gpio_isr_handler_add(BTN, on_btn_pushed, NULL);
+// }
+
+void inint_led(void){ 
+
+    //esp_rom_gpio_pad_select_gpio(LED);
+    gpio_set_direction(LED,GPIO_MODE_OUTPUT);
+    
+}
+void toggle_led(bool is_on){
+
+    gpio_set_level(LED,is_on);
+}
+
 static esp_err_t on_default_url(httpd_req_t *r)
 {
 
     ESP_LOGI(SECOND_TAG,"URL: %s",r->uri);
-    httpd_resp_sendstr(r,"hello world");
+    httpd_resp_sendstr(r,"hello world again");
     return ESP_OK;
+
+}
+
+static esp_err_t on_toggle_led_url (httpd_req_t *r)
+{
+    char buffer[100];
+    memset(&buffer,0,sizeof(buffer));
+    ESP_LOGI("Led","URL: %s",r->uri);
+
+    if(r->content_len<sizeof(buffer)){
+        httpd_req_recv(r,buffer,r->content_len);
+         ///////////////////////////////////     We need to check if there is an error. Both cJson should not return null     //////////////// 
+        cJSON *paloayd= cJSON_Parse(buffer);
+        cJSON *is_on_Json= cJSON_GetObjectItem(paloayd,"is_on");
+
+        bool is_on = cJSON_IsTrue(is_on_Json);
+        
+        cJSON_Delete(paloayd);
+        ESP_LOGW("Handler","is_on: %d",is_on);
+        toggle_led(is_on);
+
+        httpd_resp_set_status(r,"204 NO CONTENT");
+        // We don't want to send anything
+        httpd_resp_send(r,NULL,0);
+
+        
+        
+    }
+    return ESP_OK;
+    
+
+
+   
 
 }
 
@@ -72,9 +163,22 @@ static void init_server()
     httpd_uri_t default_url = {
         .uri = "/",
         .method = HTTP_GET,
-        .handler = on_default_url
+        .handler = on_default_url,
+        .user_ctx = NULL
   };
-  httpd_register_uri_handler(server,&default_url);
+  
+  httpd_uri_t toggle_led_url = {
+        .uri = "/led",
+        .method = HTTP_POST,
+        .handler = on_toggle_led_url,
+        .user_ctx = NULL
+  };
+
+    // for http server
+    httpd_register_uri_handler(server,&default_url);
+
+    //for led
+    httpd_register_uri_handler(server,&toggle_led_url);
 
 }
 static void send_task (void *params) 
@@ -179,10 +283,6 @@ void wifi_connect_init(void)
 }
 
 
-
-
-
-
 // Configure AP and start it. 
 void wifi_connect_ap(const char *ssid, const char *pass){
 
@@ -222,18 +322,20 @@ void wifi_connect_ap(const char *ssid, const char *pass){
 // We could remove it, if we will use Ip
 void start_mdns_service()
 {
-
     mdns_init();
-    mdns_hostname_set("SI");
+    mdns_hostname_set("si.com");
     mdns_instance_name_set("SC_SI");
 }
 void app_main(void){
 
     nvs_flash_init();
+    inint_led();
+    //init_btn();
     wifi_connect_init();
     wifi_connect_ap("SSID","12345678");
     init_server();
     start_mdns_service();
+    
     // esp_netif_init();
     // esp_event_loop_create_default();
 
