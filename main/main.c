@@ -25,8 +25,11 @@
 
 #include "protocol_examples_common.h"
 
-
 #include <esp_http_server.h>
+
+////////////////////////////
+#include "mdns.h" 
+
 /*******************    Wifi ap config *******************/
 #define MAX_CONNECTION 4
 #define WIFI_CHANNEL  6
@@ -45,6 +48,7 @@ static const char *TAG = "WIFI CONNECT";
 static const char *SECOND_TAG = "SERVER";
 
 int conunt_failed_reconnection_times;
+bool attempt_reconnect = false; 
 
 static esp_err_t on_default_url(httpd_req_t *r)
 {
@@ -54,8 +58,6 @@ static esp_err_t on_default_url(httpd_req_t *r)
     return ESP_OK;
 
 }
-
-
 
 // Start the server
 // handle uri
@@ -68,7 +70,6 @@ static void init_server()
     ESP_ERROR_CHECK(httpd_start(&server, &config));
 
     httpd_uri_t default_url = {
-
         .uri = "/",
         .method = HTTP_GET,
         .handler = on_default_url
@@ -90,7 +91,15 @@ free(msg);
 
 }
 
-// 
+// To disconnecte the wifi. If needed
+
+void wifi_disconnecte(void){
+    attempt_reconnect = false;
+    esp_wifi_stop();
+    esp_netif_destroy(esp_netif);
+}
+
+
 void event_handler(void *event_handler_arg, esp_event_base_t event_base,
                    int32_t event_id, void *event_data)
 {
@@ -118,19 +127,22 @@ void event_handler(void *event_handler_arg, esp_event_base_t event_base,
             ESP_LOGI(TAG,"DISCONNECTED %d , %s", wifi_disc->mac[4],
             get_wifi_disconnection_string(wifi_disc->mac[4])
             );
-            if (wifi_disc->mac[4] == 115){
-                ESP_LOGI(TAG, "Disonnected from Reguler");
-                // Try to reconnect 
-                if (conunt_failed_reconnection_times++ < 5)
-                {
-                    ESP_LOGI("SA","S");
-                    vTaskDelay(pdMS_TO_TICKS(2000));
-                    esp_wifi_connect();
-                    break;
+            if(attempt_reconnect)
+            {
+                if (wifi_disc->mac[4] == 115){
+                    ESP_LOGI(TAG, "Disonnected from Reguler");
+                    // Try to reconnect 
+                    if (conunt_failed_reconnection_times++ < 5)
+                    {
+                        ESP_LOGI("SA","S");
+                        vTaskDelay(pdMS_TO_TICKS(2000));
+                        esp_wifi_connect();
+                        break;
+                    }
+                    //wifi_disconnecte();
+                    
+
                 }
-                
-
-
             }
             //xEventGroupSetBits(wifi_events2,DISCONNECTED);
 
@@ -168,7 +180,6 @@ void wifi_connect_init(void)
 
 
 
-//wifi_event_ap_staconnected_t
 
 
 
@@ -179,14 +190,18 @@ void wifi_connect_ap(const char *ssid, const char *pass){
     wifi_events2 = xEventGroupCreate();
 
     ******************************************************************************************/
-
+    attempt_reconnect = true;
     esp_netif = esp_netif_create_default_wifi_ap();
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 
     wifi_config_t wifi_config = {};
     strncpy((char *)wifi_config.ap.ssid, ssid, sizeof(wifi_config.ap.ssid) - 1);
     strncpy((char *)wifi_config.ap.password, pass, sizeof(wifi_config.ap.password) - 1);
-    // Should we remove numbers and add variable?    
+    
+    
+    
+    ////////////////Should we remove numbers and add variable?     
+      
     wifi_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
     wifi_config.ap.max_connection = 4; /// WIFI_MAX_CONNECTION;
     wifi_config.ap.beacon_interval = 100; //WIFI_BEACON_INTERVAL;
@@ -204,11 +219,21 @@ void wifi_connect_ap(const char *ssid, const char *pass){
 
 }
 
+// We could remove it, if we will use Ip
+void start_mdns_service()
+{
+
+    mdns_init();
+    mdns_hostname_set("SI");
+    mdns_instance_name_set("SC_SI");
+}
 void app_main(void){
 
     nvs_flash_init();
     wifi_connect_init();
     wifi_connect_ap("SSID","12345678");
+    init_server();
+    start_mdns_service();
     // esp_netif_init();
     // esp_event_loop_create_default();
 
