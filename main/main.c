@@ -188,7 +188,7 @@ static esp_err_t on_ws_url(httpd_req_t *r)
     ws_pkt.payload = malloc(WS_MAX_SIZE);
     httpd_ws_recv_frame(r,&ws_pkt,WS_MAX_SIZE); // if last parmeter 0 , then we will got the length, but it give error
 
-    ESP_LOGI("WebSocket","WS payload%*s\n", ws_pkt.len,ws_pkt.payload);
+    ESP_LOGI("WebSocket","WS payload%.*s\n", ws_pkt.len,ws_pkt.payload);
 
     free(ws_pkt.payload);
 
@@ -409,7 +409,7 @@ void wifi_connect_ap(const char *ssid, const char *pass){
 void start_mdns_service()
 {
     mdns_init();
-    mdns_hostname_set("si.com");
+    mdns_hostname_set("si.local");
     mdns_instance_name_set("SC_SI");
 }
 
