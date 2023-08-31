@@ -626,3 +626,10 @@ C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/protocol_examples_common/CMakeFi
 C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/protocol_examples_common/CMakeFiles/install.dir
 C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/protocol_examples_common/CMakeFiles/install/local.dir
 C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/protocol_examples_common/CMakeFiles/install/strip.dir
+C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/components/CMakeFiles/__idf_components.dir
+C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/components/CMakeFiles/edit_cache.dir
+C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/components/CMakeFiles/rebuild_cache.dir
+C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/components/CMakeFiles/list_install_components.dir
+C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/components/CMakeFiles/install.dir
+C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/components/CMakeFiles/install/local.dir
+C:/Users/User/Desktop/ESP/Sockets/build/esp-idf/components/CMakeFiles/install/strip.dir
