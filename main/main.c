@@ -24,6 +24,8 @@
 #include <esp_http_server.h>
 #include "esp_timer.h"
 
+#include "sys/socket.h"
+
 // #include "esp_eth.h"
 
 
@@ -55,6 +57,8 @@
 
 static SemaphoreHandle_t btn_sem;
 
+int websocket_counter = 0;
+bool websocket_closed = false;
 
 
 static esp_netif_t *esp_netif;
@@ -68,6 +72,7 @@ char *get_wifi_disconnection_string(wifi_err_reason_t wifi_err_reason);
 static const char *TAG = "WIFI CONNECT";
 
 static const char *SECOND_TAG = "SERVER";
+static const char *on_ws_tag = "on_ws_url";
 
 // int conunt_failed_reconnection_times;
 // bool attempt_reconnect = false; 
@@ -178,7 +183,7 @@ static esp_err_t on_ws_url(httpd_req_t *r)
 {
     ESP_LOGI("ES","URL: %s",r->uri);
     client_session_id = httpd_req_to_sockfd(r);
-
+    websocket_closed = false;
     if(r->method == HTTP_GET){
         return ESP_OK;
     }
@@ -202,18 +207,13 @@ static esp_err_t on_ws_url(httpd_req_t *r)
         .payload = (uint8_t *)response,
         .len = strlen(response)
     };
-
+    
     return httpd_ws_send_frame(r,&ws_respon3);
     
 }
 
 esp_err_t send_ws_ms(char* msg){
-
-    if(!client_session_id){
-        ESP_LOGE("on_ws_url", "Ther is no client id");
-        return -1;
-    }
-
+    //ESP_LOGE(on_ws_tag,"In start of send_ws_ms");
     httpd_ws_frame_t ws_msg = {
 
         .final = true,
@@ -222,10 +222,38 @@ esp_err_t send_ws_ms(char* msg){
         .payload= (uint8_t *) msg,
         .type = HTTPD_WS_TYPE_TEXT
     };
-    ESP_LOGI("on_ws_url", "Client id %d",client_session_id);
-    ESP_LOGI("on_ws_url","Returen %d",httpd_ws_send_frame_async(server,client_session_id,&ws_msg));
-    return httpd_ws_send_frame_async(server,client_session_id,&ws_msg);
+    
+    if(!client_session_id)
+    {
+        ESP_LOGE(on_ws_tag, "Ther is no client id");
+        return -1;
+    }
+    int sending_frame_status = httpd_ws_send_frame_async(server,client_session_id,&ws_msg);
+    if (sending_frame_status==0)
+    {        
+        ESP_LOGI(on_ws_tag, "Client id %d",client_session_id);
+        
+        websocket_counter = 0;
+        websocket_closed = false;
+        return sending_frame_status;
+    }
+    else if(websocket_counter >= 10 && sending_frame_status !=0 && websocket_closed == false )
+    {
 
+        int ws_trigger_status = httpd_sess_trigger_close(server, client_session_id);
+        websocket_closed = true;
+        ESP_LOGI(on_ws_tag,"Socket close return: %d \n",ws_trigger_status);
+        return -1;
+    }
+    
+    else
+    {
+        websocket_counter++;
+        // ESP_LOGI(on_ws_tag,"Counter: %d",websocket_counter);
+        return -1;
+    }
+
+    
 
 
 }
@@ -416,20 +444,24 @@ void wifi_connect_ap(const char *ssid, const char *pass){
 // }
 
 void timer_callback2(){
-    char *timestamp = esp_log_system_timestamp();
-    // Create cJSON object/struct to store data
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "Timestamp", timestamp);
-    char *msg = cJSON_Print(root);
-    send_ws_ms(msg);
+    //ESP_LOGI("timer_callback","timer callback");
+    if (!websocket_closed)
+    {
+        char *timestamp = esp_log_system_timestamp();
+        // Create cJSON object/struct to store data
+        cJSON *root = cJSON_CreateObject();
+        cJSON_AddStringToObject(root, "Timestamp", timestamp);
+        char *msg = cJSON_Print(root);
+        send_ws_ms(msg);
 
-    cJSON_Delete(root);
-    free(msg);
+        cJSON_Delete(root);
+        free(msg);
+    }
     
 }
 
 void start_timer(){
-ESP_ERROR_CHECK(esp_timer_start_periodic(timer_handler, seconds_to_micro * 3 ));
+ESP_ERROR_CHECK(esp_timer_start_periodic(timer_handler, seconds_to_micro * 1.5 ));
 }
 
 void init_timer(){
