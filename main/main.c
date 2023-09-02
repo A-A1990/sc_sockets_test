@@ -1,12 +1,13 @@
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
+
+
 #include "freertos/FreeRTOS.h"
+
 #include "freertos/task.h"
+
 #include "freertos/semphr.h"
 
-#include "freertos/event_groups.h"
 
 
 #include <esp_wifi.h>
@@ -18,20 +19,21 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
-#include "esp_eth.h"
 #include "cJSON.h"
-
 #include "driver/gpio.h"
-
-#include "protocol_examples_common.h"
-
 #include <esp_http_server.h>
-
 #include "esp_timer.h"
+
+// #include "esp_eth.h"
+
+
+// #include "protocol_examples_common.h"
+
+
 
 
 ////////////////////////////
-#include "mdns.h" 
+// #include "mdns.h" 
 
 //#include "toggleled.h"
 
@@ -48,7 +50,8 @@
 
 #define LED 37
 #define BTN 11
-#define secondstomicro 1000000
+
+#define seconds_to_micro 1000000
 
 static SemaphoreHandle_t btn_sem;
 
@@ -56,9 +59,9 @@ static SemaphoreHandle_t btn_sem;
 
 static esp_netif_t *esp_netif;
 
-static EventGroupHandle_t wifi_events2;
-static int CONNECTED =BIT0;
-static int DISCONNECTED =BIT1;
+// static EventGroupHandle_t wifi_events2;
+// static int CONNECTED =BIT0;
+// static int DISCONNECTED =BIT1;
 
 char *get_wifi_disconnection_string(wifi_err_reason_t wifi_err_reason);
 
@@ -66,11 +69,11 @@ static const char *TAG = "WIFI CONNECT";
 
 static const char *SECOND_TAG = "SERVER";
 
-int conunt_failed_reconnection_times;
-bool attempt_reconnect = false; 
+// int conunt_failed_reconnection_times;
+// bool attempt_reconnect = false; 
 
 static httpd_handle_t server = NULL;
-
+esp_timer_handle_t timer_handler;
 
 /*static void IRAM_ATTR on_btn_pushed(void *args)
 {
@@ -131,11 +134,9 @@ void toggle_led(bool is_on){
 
 static esp_err_t on_default_url(httpd_req_t *r)
 {
-
     ESP_LOGI(SECOND_TAG,"URL: %s",r->uri);
     httpd_resp_sendstr(r,"hello world again");
     return ESP_OK;
-
 }
 
 static esp_err_t on_toggle_led_url (httpd_req_t *r)
@@ -165,19 +166,19 @@ static esp_err_t on_toggle_led_url (httpd_req_t *r)
     }
     return ESP_OK;
     
-
-
-   
-
+                                                                                           
 }
 
 ////////////////////////////// Move it up 
 static int client_session_id; 
 #define WS_MAX_SIZE 1024
+
+
 static esp_err_t on_ws_url(httpd_req_t *r)
 {
     ESP_LOGI("ES","URL: %s",r->uri);
     client_session_id = httpd_req_to_sockfd(r);
+
     if(r->method == HTTP_GET){
         return ESP_OK;
     }
@@ -189,10 +190,11 @@ static esp_err_t on_ws_url(httpd_req_t *r)
     httpd_ws_recv_frame(r,&ws_pkt,WS_MAX_SIZE); // if last parmeter 0 , then we will got the length, but it give error
 
     ESP_LOGI("WebSocket","WS payload%.*s\n", ws_pkt.len,ws_pkt.payload);
-
+    printf("Web_socket: %.*s\n", ws_pkt.len,ws_pkt.payload);
     free(ws_pkt.payload);
 
     char *response = "connected ok";
+
     httpd_ws_frame_t ws_respon3 = {
         .final=true,
         .fragmented = false,
@@ -202,7 +204,7 @@ static esp_err_t on_ws_url(httpd_req_t *r)
     };
 
     return httpd_ws_send_frame(r,&ws_respon3);
-
+    
 }
 
 esp_err_t send_ws_ms(char* msg){
@@ -220,8 +222,10 @@ esp_err_t send_ws_ms(char* msg){
         .payload= (uint8_t *) msg,
         .type = HTTPD_WS_TYPE_TEXT
     };
-
+    ESP_LOGI("on_ws_url", "Client id %d",client_session_id);
+    ESP_LOGI("on_ws_url","Returen %d",httpd_ws_send_frame_async(server,client_session_id,&ws_msg));
     return httpd_ws_send_frame_async(server,client_session_id,&ws_msg);
+
 
 
 }
@@ -266,7 +270,8 @@ static void init_server()
    httpd_register_uri_handler(server,&ws_url);
 
 }
-static void send_task (void *params) 
+
+/*static void send_task (void *params) 
 {
 
 cJSON *payload = cJSON_CreateObject();
@@ -278,13 +283,13 @@ cJSON_Delete(payload);
 free(msg);
 
 
-}
+}*/
 
 
 // To disconnecte the wifi. If needed
 
 void wifi_disconnecte(void){
-    attempt_reconnect = false;
+    //attempt_reconnect = false;
     esp_wifi_stop();
     esp_netif_destroy(esp_netif);
 }
@@ -306,7 +311,7 @@ void event_handler(void *event_handler_arg, esp_event_base_t event_base,
         
         case WIFI_EVENT_AP_STACONNECTED:
             ESP_LOGI(TAG,"WIFI_EVENT_AP_STACONNECTED");
-            conunt_failed_reconnection_times=0;
+            //conunt_failed_reconnection_times=0;
             break;
         
         case WIFI_EVENT_AP_STADISCONNECTED:
@@ -317,23 +322,23 @@ void event_handler(void *event_handler_arg, esp_event_base_t event_base,
             ESP_LOGI(TAG,"DISCONNECTED %d , %s", wifi_disc->mac[4],
             get_wifi_disconnection_string(wifi_disc->mac[4])
             );
-            if(attempt_reconnect)
-            {
-                if (wifi_disc->mac[4] == 115){
-                    ESP_LOGI(TAG, "Disonnected from Reguler");
-                    // Try to reconnect 
-                    if (conunt_failed_reconnection_times++ < 5)
-                    {
-                        ESP_LOGI("SA","S");
-                        vTaskDelay(pdMS_TO_TICKS(2000));
-                        esp_wifi_connect();
-                        break;
-                    }
-                    //wifi_disconnecte();
+            // if(attempt_reconnect)
+            // {
+            //     if (wifi_disc->mac[4] == 115){
+            //         ESP_LOGI(TAG, "Disonnected from Reguler");
+            //         // Try to reconnect 
+            //         if (conunt_failed_reconnection_times++ < 5)
+            //         {
+            //             ESP_LOGI("SA","S");
+            //             vTaskDelay(pdMS_TO_TICKS(2000));
+            //             esp_wifi_connect();
+            //             break;
+            //         }
+            //         //wifi_disconnecte();
                     
 
-                }
-            }
+            //     }
+            // }
             //xEventGroupSetBits(wifi_events2,DISCONNECTED);
 
             break;
@@ -376,7 +381,7 @@ void wifi_connect_ap(const char *ssid, const char *pass){
     wifi_events2 = xEventGroupCreate();
 
     ******************************************************************************************/
-    attempt_reconnect = true;
+    //attempt_reconnect = true;
     esp_netif = esp_netif_create_default_wifi_ap();
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 
@@ -384,14 +389,11 @@ void wifi_connect_ap(const char *ssid, const char *pass){
     strncpy((char *)wifi_config.ap.ssid, ssid, sizeof(wifi_config.ap.ssid) - 1);
     strncpy((char *)wifi_config.ap.password, pass, sizeof(wifi_config.ap.password) - 1);
     
-    
-    
-    ////////////////Should we remove numbers and add variable?     
-      
+          
     wifi_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
-    wifi_config.ap.max_connection = 4; /// WIFI_MAX_CONNECTION;
-    wifi_config.ap.beacon_interval = 100; //WIFI_BEACON_INTERVAL;
-    wifi_config.ap.channel = 6; //WIFI_CHANNEL;
+    wifi_config.ap.max_connection = MAX_CONNECTION;
+    wifi_config.ap.beacon_interval = WIFI_BEACON_INTERVAL;
+    wifi_config.ap.channel = WIFI_CHANNEL;
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -406,12 +408,12 @@ void wifi_connect_ap(const char *ssid, const char *pass){
 }
 
 // We could remove it, if we will use Ip
-void start_mdns_service()
-{
-    mdns_init();
-    mdns_hostname_set("si.local");
-    mdns_instance_name_set("SC_SI");
-}
+// void start_mdns_service()
+// {
+//     mdns_init();
+//     mdns_hostname_set("si.local");
+//     mdns_instance_name_set("SC_SI");
+// }
 
 void timer_callback2(){
     char *timestamp = esp_log_system_timestamp();
@@ -424,16 +426,15 @@ void timer_callback2(){
     cJSON_Delete(root);
     free(msg);
     
-
 }
-esp_timer_handle_t timer_handler;
+
 void start_timer(){
-ESP_ERROR_CHECK(esp_timer_start_periodic(timer_handler, secondstomicro * 3 ));
+ESP_ERROR_CHECK(esp_timer_start_periodic(timer_handler, seconds_to_micro * 3 ));
 }
 
 void init_timer(){
 
-    const esp_timer_create_args_t my_timer_args = {.callback = &timer_callback2, .name = "Timer"};
+    const esp_timer_create_args_t my_timer_args = {.callback = &timer_callback2, .name = "WebsocketTimer"};
     
     ESP_ERROR_CHECK(esp_timer_create(&my_timer_args, &timer_handler));
 
@@ -447,7 +448,7 @@ void app_main(void){
     nvs_flash_init();
     inint_led();
     //init_btn();
-    start_mdns_service();
+    // start_mdns_service();
     wifi_connect_init();
     wifi_connect_ap("SSID","12345678");
     init_timer();
