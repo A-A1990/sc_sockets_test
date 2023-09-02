@@ -31,7 +31,13 @@
         "exception": "c",
         "gpio.h": "c",
         "esp_netif.h": "c",
-        "cjson.h": "c"
+        "cjson.h": "c",
+        "Timer.C": "cpp",
+        "*.tcc": "c",
+        "random": "c",
+        "functional": "c",
+        "regex": "c",
+        "type_traits": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }
