@@ -37,7 +37,9 @@
         "random": "c",
         "functional": "c",
         "regex": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "chrono": "c",
+        "tuple": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

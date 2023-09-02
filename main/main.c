@@ -63,6 +63,7 @@ bool websocket_closed = false;
 
 static esp_netif_t *esp_netif;
 
+
 // static EventGroupHandle_t wifi_events2;
 // static int CONNECTED =BIT0;
 // static int DISCONNECTED =BIT1;
@@ -192,13 +193,19 @@ static esp_err_t on_ws_url(httpd_req_t *r)
     memset(&ws_pkt,0,sizeof(httpd_ws_frame_t()));
     ws_pkt.type = HTTPD_WS_TYPE_TEXT;
     ws_pkt.payload = malloc(WS_MAX_SIZE);
-    httpd_ws_recv_frame(r,&ws_pkt,WS_MAX_SIZE); // if last parmeter 0 , then we will got the length, but it give error
+    // if (ws_pkt.payload == NULL) {
+    //     printf("Error: Failed to allocate memory for WebSocket payload\n");
+    //     return -1;
+    // }
 
-    ESP_LOGI("WebSocket","WS payload%.*s\n", ws_pkt.len,ws_pkt.payload);
+    httpd_ws_recv_frame(r,&ws_pkt,WS_MAX_SIZE); // if last parmeter 0 , then we will got the length, but it give error
+     
+    //ESP_LOGI("WebSocket","WS payload%.*s\n", ws_pkt.len,ws_pkt.payload);
+
     printf("Web_socket: %.*s\n", ws_pkt.len,ws_pkt.payload);
     free(ws_pkt.payload);
 
-    char *response = "connected ok";
+    char *response = "Connected ok";
 
     httpd_ws_frame_t ws_respon3 = {
         .final=true,
@@ -208,10 +215,16 @@ static esp_err_t on_ws_url(httpd_req_t *r)
         .len = strlen(response)
     };
     
-    return httpd_ws_send_frame(r,&ws_respon3);
+    return httpd_ws_send_frame(r,&ws_pkt);
     
 }
 
+void close_socket(){
+    int ws_trigger_status = httpd_sess_trigger_close(server, client_session_id);
+    websocket_closed = true;
+    ESP_LOGI(on_ws_tag,"Socket close return: %d \n",ws_trigger_status);
+
+}
 esp_err_t send_ws_ms(char* msg){
     //ESP_LOGE(on_ws_tag,"In start of send_ws_ms");
     httpd_ws_frame_t ws_msg = {
@@ -223,9 +236,9 @@ esp_err_t send_ws_ms(char* msg){
         .type = HTTPD_WS_TYPE_TEXT
     };
     
-    if(!client_session_id)
+    if(!client_session_id && websocket_closed == true)
     {
-        ESP_LOGE(on_ws_tag, "Ther is no client id");
+        ESP_LOGE(on_ws_tag, "There is no client id");
         return -1;
     }
     int sending_frame_status = httpd_ws_send_frame_async(server,client_session_id,&ws_msg);
@@ -240,9 +253,7 @@ esp_err_t send_ws_ms(char* msg){
     else if(websocket_counter >= 10 && sending_frame_status !=0 && websocket_closed == false )
     {
 
-        int ws_trigger_status = httpd_sess_trigger_close(server, client_session_id);
-        websocket_closed = true;
-        ESP_LOGI(on_ws_tag,"Socket close return: %d \n",ws_trigger_status);
+        close_socket();
         return -1;
     }
     
@@ -350,6 +361,7 @@ void event_handler(void *event_handler_arg, esp_event_base_t event_base,
             ESP_LOGI(TAG,"DISCONNECTED %d , %s", wifi_disc->mac[4],
             get_wifi_disconnection_string(wifi_disc->mac[4])
             );
+            close_socket();
             // if(attempt_reconnect)
             // {
             //     if (wifi_disc->mac[4] == 115){
