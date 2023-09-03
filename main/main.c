@@ -182,40 +182,92 @@ static int client_session_id;
 
 static esp_err_t on_ws_url(httpd_req_t *r)
 {
-    ESP_LOGI("ES","URL: %s",r->uri);
+    ESP_LOGI("WS","URL: %s",r->uri);
     client_session_id = httpd_req_to_sockfd(r);
     websocket_closed = false;
+
     if(r->method == HTTP_GET){
+        ESP_LOGI("TAG", "Handshake done, the new connection was opened");
         return ESP_OK;
     }
     
     httpd_ws_frame_t ws_pkt;
-    memset(&ws_pkt,0,sizeof(httpd_ws_frame_t()));
+    uint8_t *buf = NULL;
+    memset(&ws_pkt,0,sizeof(httpd_ws_frame_t));
     ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+    // ws_pkt.mask
     ws_pkt.payload = malloc(WS_MAX_SIZE);
+    
     // if (ws_pkt.payload == NULL) {
     //     printf("Error: Failed to allocate memory for WebSocket payload\n");
     //     return -1;
     // }
 
-    httpd_ws_recv_frame(r,&ws_pkt,WS_MAX_SIZE); // if last parmeter 0 , then we will got the length, but it give error
+    esp_err_t ret = httpd_ws_recv_frame(r, &ws_pkt, 0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_recv_frame failed to get frame len with %d", ret);
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "frame len is %d", ws_pkt.len);
+    if (ws_pkt.len) {
+        /* ws_pkt.len + 1 is for NULL termination as we are expecting a string */
+        buf = calloc(1, ws_pkt.len + 1);
+        if (buf == NULL) {
+            ESP_LOGE(TAG, "Failed to calloc memory for buf");
+            return ESP_ERR_NO_MEM;
+        }
+        ws_pkt.payload = buf;
+        /* Set max_len = ws_pkt.len to get the frame payload */
+        ret = httpd_ws_recv_frame(r, &ws_pkt, ws_pkt.len);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d", ret);
+            free(buf);
+            return ret;
+        }
+    }
+   
+   if (ws_pkt.type == HTTPD_WS_TYPE_TEXT ) {
+        
+        ESP_LOGI(TAG, "Received packet with message: %s", ws_pkt.payload);
+        ret = httpd_ws_send_frame(r, &ws_pkt);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+        }
+        ESP_LOGI(TAG, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info:%d", r->handle,
+                 httpd_req_to_sockfd(r), httpd_ws_get_fd_info(r->handle, httpd_req_to_sockfd(r)));
+        free(buf);
+        return ret;
+    }
+    free(buf);
+    return ESP_OK;
+    
+
+    // httpd_ws_recv_frame(r,&ws_pkt,WS_MAX_SIZE); // if last parmeter 0 , then we will got the length, but it give error
+    
+    //  uint8_t *recived_packet = (ws_pkt->paload);
+    //  for (size_t i = 0; i < ws_pkt.len ; i++)
+    //  {
+    //     printf("%02x ",recived_packet[i]);
+    //  }
+    //  printf("\n");
      
     //ESP_LOGI("WebSocket","WS payload%.*s\n", ws_pkt.len,ws_pkt.payload);
 
-    printf("Web_socket: %.*s\n", ws_pkt.len,ws_pkt.payload);
-    free(ws_pkt.payload);
+    // printf("Web_socket: %.*s\n", ws_pkt.len,ws_pkt.payload);
+    // free(ws_pkt.payload);
 
-    char *response = "Connected ok";
+    // char *response = "Connected ok";
 
-    httpd_ws_frame_t ws_respon3 = {
-        .final=true,
-        .fragmented = false,
-        .type = HTTPD_WS_TYPE_TEXT,
-        .payload = (uint8_t *)response,
-        .len = strlen(response)
-    };
+    // httpd_ws_frame_t ws_respon3 = {
+    //     .final=true,
+    //     .fragmented = false,
+    //     .type = HTTPD_WS_TYPE_TEXT,
+    //     .payload = (uint8_t *)response,
+    //     .len = strlen(response)
+    // };
     
-    return httpd_ws_send_frame(r,&ws_pkt);
+    // return httpd_ws_send_frame(r,&ws_pkt);
     
 }
 
@@ -473,7 +525,7 @@ void timer_callback2(){
 }
 
 void start_timer(){
-ESP_ERROR_CHECK(esp_timer_start_periodic(timer_handler, seconds_to_micro * 1.5 ));
+ESP_ERROR_CHECK(esp_timer_start_periodic(timer_handler, seconds_to_micro * 5 ));
 }
 
 void init_timer(){
@@ -494,7 +546,7 @@ void app_main(void){
     //init_btn();
     // start_mdns_service();
     wifi_connect_init();
-    wifi_connect_ap("SSID","12345678");
+    wifi_connect_ap("myssid","mypassword");
     init_timer();
     
     init_server();
