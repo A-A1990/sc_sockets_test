@@ -507,21 +507,28 @@ void wifi_connect_ap(const char *ssid, const char *pass){
 //     mdns_instance_name_set("SC_SI");
 // }
 
-void timer_callback2(){
-    //ESP_LOGI("timer_callback","timer callback");
-    if (!websocket_closed)
-    {
-        char *timestamp = esp_log_system_timestamp();
-        // Create cJSON object/struct to store data
+void sc_websocket_convert_to_msg(char *r_data, char *prompt ){
+
         cJSON *root = cJSON_CreateObject();
-        cJSON_AddStringToObject(root, "Timestamp", timestamp);
+        cJSON_AddStringToObject(root, prompt , r_data);
         char *msg = cJSON_Print(root);
-        send_ws_ms(msg);
+        sc_websocket_send_ws_ms(msg);
 
         cJSON_Delete(root);
         free(msg);
+
+}
+
+void sc_websocket_timer_callback2()
+{
+    if (!websocket_closed)
+    {
+        char *timestamp = esp_log_system_timestamp();
+        sc_websocket_convert_to_msg(timestamp, "Timestamp");
+        // Create cJSON object/struct to store data
+        
     }
-    
+
 }
 
 void start_timer(){
